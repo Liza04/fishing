@@ -1,5 +1,5 @@
 """
-scrapper.py — массовый асинхронный скриншотер сайтов по списку доменов.
+scraper.py — массовый асинхронный скриншотер сайтов по списку доменов.
 
 Описание
 =================
@@ -54,14 +54,14 @@ import sys
 
 # ── Константы ─────────────────────────────────────────────────────────────────
 
-VIEW          = {'width': 1280, 'height': 1080}   # размер окна браузера
-SCREEN_FULL   = False                              # полная страница или только viewport
-TIMEOUT_MS    = 10_000                             # таймаут загрузки страницы (мс)
-WAIT_LOAD_MS  = 1_500                              # ожидание после загрузки (мс)
-MAX_RETRIES   = 1                                  # попыток на домен
-CONCURRENCY   = 5                                  # вкладок на процесс
-NUM_PROCESSES = 10                                 # количество процессов
-CHUNK_SIZE    = 100                                # доменов в одном задании
+VIEW = {'width': 1280, 'height': 1080}  # размер окна браузера
+SCREEN_FULL = False  # полная страница или только viewport
+TIMEOUT_MS = 7_000  # таймаут загрузки страницы (мс)
+WAIT_LOAD_MS = 500  # ожидание после загрузки (мс)
+MAX_RETRIES = 1  # попыток на домен
+CONCURRENCY = 5  # вкладок на процесс
+NUM_PROCESSES = 10  # количество процессов
+CHUNK_SIZE = 100  # доменов в одном задании
 
 
 # ── Датакласс результата ──────────────────────────────────────────────────────
@@ -69,11 +69,11 @@ CHUNK_SIZE    = 100                                # доменов в одно�
 @dataclass
 class DomainResult:
     """Результат обработки одного домена."""
-    domain: str                        # исходный домен как в файле
-    url: str                           # URL с которым работали
-    status: str                        # ok | timeout | error | skip
-    screenshot_path: Optional[str] = None   # путь к PNG, если успешно
-    error_msg: Optional[str] = None         # текст ошибки, если была
+    domain: str  # исходный домен как в файле
+    url: str  # URL с которым работали
+    status: str  # ok | timeout | error | skip
+    screenshot_path: Optional[str] = None  # путь к PNG, если успешно
+    error_msg: Optional[str] = None  # текст ошибки, если была
 
 
 # ── Вспомогательные функции ───────────────────────────────────────────────────
@@ -297,16 +297,17 @@ async def _worker_loop(
 
         while True:
             try:
+                # Блокирующий get из multiprocessing.Queue — выносим в executor
                 chunk: list[str] = await loop.run_in_executor(
                     None, _queue_get, task_queue
                 )
-            except StopIteration:
+            except _Stop:
                 break
 
             if chunk is None:
                 break
 
-            # Запускаем все домены чанка параллельно 
+            # Запускаем все домены чанка параллельно (ограничено размером пула контекстов)
             tasks = [
                 screenshot_by_domain(context_queue, domain, output_dir)
                 for domain in chunk
@@ -329,13 +330,17 @@ async def _worker_loop(
 
 # ── Вспомогательная функция чтения из multiprocessing.Queue ──────────────────
 
+class _Stop(Exception):
+    """Стоп-сигнал (получен None от feeder-потока)"""
+
+
 def _queue_get(q: Queue):
     """
     Блокирующее чтение из multiprocessing.Queue с поддержкой стоп-сигнала.
 
-    Крутится в цикле с таймаутом, чтобы не зависнуть навсегда если
+    Крутится в цикле с таймаутом 5 сек, чтобы не зависнуть навсегда если
     главный процесс упал. None в очереди интерпретируется как стоп-сигнал
-    и бросает StopIteration.
+    и бросает _Stop.
 
     Args:
         q: multiprocessing.Queue для чтения.
@@ -344,13 +349,13 @@ def _queue_get(q: Queue):
         Следующий элемент из очереди (чанк доменов).
 
     Raises:
-        StopIteration: если получен None (стоп-сигнал от feeder).
+        _Stop: если получен None (стоп-сигнал от feeder).
     """
     while True:
         try:
             item = q.get(timeout=5)
             if item is None:
-                raise StopIteration
+                raise _Stop
             return item
         except Empty:
             continue
@@ -443,9 +448,9 @@ def run_multiprocess(
     for p in processes:
         p.join()
 
-    ok      = sum(1 for r in results if r['status'] == 'ok')
+    ok = sum(1 for r in results if r['status'] == 'ok')
     timeout = sum(1 for r in results if r['status'] == 'timeout')
-    error   = sum(1 for r in results if r['status'] == 'error')
+    error = sum(1 for r in results if r['status'] == 'error')
     skipped = sum(1 for r in results if r['status'] == 'skip')
 
     logging.info('=' * 50)
@@ -479,16 +484,16 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Примеры:
-  python scraper.py --domains domains.txt --output screens --processes 8 --workers 6 --chunk 100
+  python scraper.py --domains domains.txt --output screens --processes 20 --workers 10 --chunk 500
         """
     )
-    parser.add_argument('--domains',   required=True,  help='Файл с доменами (по одному на строку)')
-    parser.add_argument('--output',    default='screen_out', help='Папка для скриншотов (default: screen_out)')
+    parser.add_argument('--domains', required=True, help='Файл с доменами (по одному на строку)')
+    parser.add_argument('--output', default='screen_out', help='Папка для скриншотов (default: screen_out)')
     parser.add_argument('--processes', type=int, default=NUM_PROCESSES,
                         help=f'Процессов (default: {NUM_PROCESSES})')
-    parser.add_argument('--workers',   type=int, default=CONCURRENCY,
+    parser.add_argument('--workers', type=int, default=CONCURRENCY,
                         help=f'Вкладок на процесс (default: {CONCURRENCY})')
-    parser.add_argument('--chunk',     type=int, default=CHUNK_SIZE,
+    parser.add_argument('--chunk', type=int, default=CHUNK_SIZE,
                         help=f'Размер чанка (default: {CHUNK_SIZE})')
     args = parser.parse_args()
 
