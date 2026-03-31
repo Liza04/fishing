@@ -46,3 +46,53 @@ scrapper.py — массовый асинхронный скриншотер с�
      "status": "ok", "screenshot_path": "screen_out/example.com.png", "error_msg": null}
 
 Статусы: ok | timeout | error | skip
+
+## YOLO
+
+Мы используем YOLO для поиска различных вариаций логотипов на странице. Для составления датасета используется результат работы scraper'a (скрины реальных сайтов) и картинки логотипов с прозрачностью в формате png. 
+
+### dataset_yolo.py
+
+dataset_yolo.py — генератор датасета для YOLO с несколькими брендами. Генерирует как положительные примеры (с аугментациями и случайными размещениями), так и негативные примеры, делит готовые примеры на валидационную, тестовую и тренировочную выборки. Выдает папку с картинками по каждой выборке, текстовыми bbox'ами для обучения йоло, файлом для обучения.   
+
+Структура папки с логотипами (?? — папка на бренд): (предвар)  
+   - logos/  
+        - 0_moex/                  ← class_id=0, name=moex  
+            - moex_horizontal.png  
+            - moex_nkc.png  
+            - moex_icon.png  
+            - moex_square.png  
+        - 1_vtb/  ← class_id=1, name=vtb 
+             - vtb_logo.png    
+
+  Внутри папки — любое количество PNG/JPG вариантов логотипа.
+  При генерации для каждого примера случайно выбирается бренд,
+  потом случайный вариант внутри бренда.
+
+Также можно использовать иначе (файлы прямо в logos/):  
+  - logos/  
+      - 0_moex.png  
+      - 1_vtb.png  
+  
+#### Примеры запуска:  
+  ```python dataset_gen_multi.py --logos logos/ --backgrounds screenshots/ --output dataset_multi```    
+  ```python dataset_gen_multi.py --logos logos/ --backgrounds screenshots/ --output dataset_multi --neg_pr 0.15 --max_bg 500 --multi_pr 0.1```
+
+### train_yolo.py
+train_yolo.py — обучение YOLOv13n детектора логотипа(ов). Поддерживает мультиклассовый датасет (несколько брендов).
+
+#### Требования:
+```pip install git+https://github.com/iMoonLab/yolov13.git pillow albumentations```  
+Веса yolov13n.pt скачать с https://github.com/iMoonLab/yolov13/releases
+
+### Примеры использования:
+  - Базовый запуск  
+    ```python train_yolo.py```
+
+  - Указать датасет и имя эксперимента  
+    ```python train_yolo.py --data dataset_multi/data.yaml --name moex_v1```
+
+  - Продолжить с чекпоинта
+    ```python train_yolo.py --resume runs/logo/moex_v1/weights/last.pt```
+
+
