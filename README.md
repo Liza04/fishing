@@ -96,3 +96,19 @@ train_yolo.py — обучение YOLOv13n детектора логотипа(
     ```python train_yolo.py --resume runs/logo/moex_v1/weights/last.pt```
 
 
+## AsyncFaviconExtractor
+
+Асинхронный загрузчик фавиконок для множества доменов.  
+Скачивает favicon по URL, конвертирует SVG в PNG, приводит к единому размеру (48×48) и сохраняет в папку.
+
+### Использование
+
+```domains = ["example.com", "github.com", "stackoverflow.com"]```
+```df = asyncio.run(process_domains(domains, output_dir="favicons", concurrency=500))```
+```print(df)```
+Результат — pandas.DataFrame с колонками:
+- domain — домен
+- is_exist — 1, если фавиконка найдена и сохранена
+
+Файлы сохраняются как out_{domain}.png.
+Итоговая таблица по умолчанию записывается в results.csv.
